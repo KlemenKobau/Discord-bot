@@ -1,39 +1,97 @@
 use anyhow::anyhow;
+use serenity::all::Reaction;
+use serenity::all::{Member, MessageId};
 use serenity::async_trait;
-use serenity::model::channel::Message;
+use serenity::http::Http;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use serenity::{all::Reaction, builder::CreateMessage};
 use shuttle_secrets::SecretStore;
-use tracing::{error, info};
+use tracing::{error, info, warn};
+
+const MONITORED_MESSAGE: u64 = 1183061124510384281;
+const ANIME_ROLE_ID: u64 = 1183107067574239334;
+const ANIME_ROLE_EMOJI: &str = "🎎";
 
 struct Bot;
 
-#[async_trait]
-impl EventHandler for Bot {
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!hello" {
-            if let Err(e) = msg.channel_id.say(&ctx.http, "world!").await {
-                error!("Error sending message: {:?}", e);
-            }
-        }
+async fn get_member(http: &Http, reaction: &Reaction) -> Option<Member> {
+    let user_id = reaction.user_id;
+    let guild_id = reaction.guild_id;
+
+    if user_id.is_none() {
+        warn!("User id is none in reaction: {:?}", reaction);
+        return None;
     }
 
-    async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
-        let cache = ctx.http();
-        let user_res = add_reaction.user(cache).await;
+    if guild_id.is_none() {
+        warn!("Guild id none in reaction: {:?}", reaction);
+        return None;
+    }
 
-        if let Err(err) = user_res {
-            error!("Error getting user: {:?}", err);
+    let member = http.get_member(guild_id.unwrap(), user_id.unwrap()).await;
+    match member {
+        Ok(member) => Some(member),
+        Err(err) => {
+            warn!("Error getting member: {}", err);
+            None
+        }
+    }
+}
+
+fn is_message_relevant_for_bot(reaction: &Reaction) -> bool {
+    let bot_monitored_message = MessageId::new(MONITORED_MESSAGE);
+
+    if !reaction.message_id.eq(&bot_monitored_message) {
+        return false;
+    }
+
+    if !reaction.emoji.unicode_eq(ANIME_ROLE_EMOJI) {
+        return false;
+    }
+
+    true
+}
+
+#[async_trait]
+impl EventHandler for Bot {
+    async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
+        if !is_message_relevant_for_bot(&add_reaction) {
             return;
         }
 
-        let user = user_res.unwrap();
+        let http = ctx.http();
+        let member = get_member(http, &add_reaction).await;
 
-        let message = CreateMessage::new();
-        let message = message.content("Hello!");
+        if member.is_none() {
+            warn!("Member is none: {:?}", add_reaction);
+            return;
+        }
 
-        user.direct_message(cache, message).await;
+        let role_add_res = member.unwrap().add_role(http, ANIME_ROLE_ID).await;
+
+        if let Err(err) = role_add_res {
+            error!("Error adding role: {}", err);
+        }
+    }
+
+    async fn reaction_remove(&self, ctx: Context, removed_reaction: Reaction) {
+        if !is_message_relevant_for_bot(&removed_reaction) {
+            return;
+        }
+
+        let http = ctx.http();
+        let member = get_member(http, &removed_reaction).await;
+
+        if member.is_none() {
+            warn!("Member is none: {:?}", removed_reaction);
+            return;
+        }
+
+        let role_add_res = member.unwrap().remove_role(http, ANIME_ROLE_ID).await;
+
+        if let Err(err) = role_add_res {
+            error!("Error adding role: {}", err);
+        }
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
