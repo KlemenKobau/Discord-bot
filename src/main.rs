@@ -8,8 +8,8 @@ use serenity::prelude::*;
 use shuttle_secrets::SecretStore;
 use tracing::{error, info, warn};
 
-const MONITORED_MESSAGE: u64 = 1183061124510384281;
-const ANIME_ROLE_ID: u64 = 1183107067574239334;
+const MONITORED_MESSAGE: u64 = 1183140575361368064;
+const ANIME_ROLE_ID: u64 = 942341466540355584;
 const ANIME_ROLE_EMOJI: &str = "🎎";
 
 struct Bot;
