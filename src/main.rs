@@ -90,7 +90,7 @@ impl EventHandler for Bot {
         let role_add_res = member.unwrap().remove_role(http, ANIME_ROLE_ID).await;
 
         if let Err(err) = role_add_res {
-            error!("Error adding role: {}", err);
+            error!("Error removing role: {}", err);
         }
     }
 
