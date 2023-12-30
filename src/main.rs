@@ -67,7 +67,11 @@ impl EventHandler for Bot {
             return;
         }
 
-        let role_add_res = member.unwrap().add_role(http, ANIME_ROLE_ID).await;
+        let member = member.unwrap();
+
+        info!("Assigning role to member: {}", member.display_name());
+
+        let role_add_res = member.add_role(http, ANIME_ROLE_ID).await;
 
         if let Err(err) = role_add_res {
             error!("Error adding role: {}", err);
@@ -87,7 +91,11 @@ impl EventHandler for Bot {
             return;
         }
 
-        let role_add_res = member.unwrap().remove_role(http, ANIME_ROLE_ID).await;
+        let member = member.unwrap();
+
+        info!("Removing role from member: {}", member.display_name());
+
+        let role_add_res = member.remove_role(http, ANIME_ROLE_ID).await;
 
         if let Err(err) = role_add_res {
             error!("Error removing role: {}", err);
