@@ -1,11 +1,11 @@
-use anyhow::anyhow;
+use anyhow::Result;
 use serenity::all::Reaction;
 use serenity::all::{Member, MessageId};
 use serenity::async_trait;
 use serenity::http::Http;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use shuttle_secrets::SecretStore;
+use std::env;
 use tracing::{error, info, warn};
 
 const MONITORED_MESSAGE: u64 = 1183140575361368064;
@@ -107,16 +107,17 @@ impl EventHandler for Bot {
     }
 }
 
-#[shuttle_runtime::main]
-async fn serenity(
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
-) -> shuttle_serenity::ShuttleSerenity {
-    // Get the discord token set in `Secrets.toml`
-    let token = if let Some(token) = secret_store.get("DISCORD_TOKEN") {
-        token
-    } else {
-        return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
-    };
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize logging
+    tracing_subscriber::fmt::init();
+
+    // Load environment variables from .env file (if it exists)
+    dotenvy::dotenv().ok();
+
+    // Get the discord token from environment
+    let token = env::var("DISCORD_TOKEN")
+        .expect("Expected DISCORD_TOKEN environment variable");
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
@@ -124,10 +125,25 @@ async fn serenity(
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::AUTO_MODERATION_CONFIGURATION;
 
-    let client = Client::builder(&token, intents)
+    let mut client = Client::builder(&token, intents)
         .event_handler(Bot)
         .await
-        .expect("Err creating client");
+        .expect("Error creating client");
 
-    Ok(client.into())
+    // Start listening for events by starting a single shard
+    info!("Starting bot...");
+
+    // Spawn the client in a separate task so we can handle shutdown signals
+    tokio::select! {
+        result = client.start() => {
+            if let Err(why) = result {
+                error!("Client error: {:?}", why);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("Received Ctrl-C, shutting down gracefully...");
+        }
+    }
+
+    Ok(())
 }
