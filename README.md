@@ -12,7 +12,25 @@ A Discord bot for the Kendo Discord server that implements reaction-based role m
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### Using Pre-built Docker Image (Easiest)
+
+Pull and run the pre-built image from GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/klemenkobau/discord-bot:latest
+
+# Run the container
+docker run -d \
+  --name kobi-kendo-discord-bot \
+  --restart unless-stopped \
+  -e DISCORD_TOKEN=your_discord_token_here \
+  ghcr.io/klemenkobau/discord-bot:latest
+```
+
+To use a specific version, replace `latest` with the version tag (e.g., `v1.0.0`).
+
+### Using Docker Compose
 
 1. Create a `.env` file with your Discord token:
    ```bash
@@ -20,17 +38,29 @@ A Discord bot for the Kendo Discord server that implements reaction-based role m
    # Edit .env and add your DISCORD_TOKEN
    ```
 
-2. Start the bot using docker-compose:
+2. Update `docker-compose.yml` to use the pre-built image:
+   ```yaml
+   version: '3.8'
+   services:
+     discord-bot:
+       image: ghcr.io/klemenkobau/discord-bot:latest
+       container_name: kobi-kendo-discord-bot
+       restart: unless-stopped
+       environment:
+         - DISCORD_TOKEN=${DISCORD_TOKEN}
+   ```
+
+3. Start the bot:
    ```bash
    docker-compose up -d
    ```
 
-3. View logs:
+4. View logs:
    ```bash
    docker-compose logs -f
    ```
 
-4. Stop the bot:
+5. Stop the bot:
    ```bash
    docker-compose down
    ```
@@ -60,7 +90,30 @@ The bot requires a `DISCORD_TOKEN` environment variable. Get your bot token from
 
 ## Building for Production
 
-### Docker
+### Using Pre-built Images
+
+The easiest way to deploy is using the pre-built images from GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/klemenkobau/discord-bot:latest
+
+# Run it
+docker run -d \
+  --name kobi-kendo-discord-bot \
+  --restart unless-stopped \
+  -e DISCORD_TOKEN=your_token \
+  ghcr.io/klemenkobau/discord-bot:latest
+```
+
+**Available Images:**
+- `ghcr.io/klemenkobau/discord-bot:latest` - Latest build from main branch
+- `ghcr.io/klemenkobau/discord-bot:v1.0.0` - Specific version tags
+- `ghcr.io/klemenkobau/discord-bot:main-<sha>` - Specific commit builds
+
+### Building Your Own Docker Image
+
+If you want to build from source:
 
 ```bash
 # Build the image

@@ -1,0 +1,15 @@
+version: '3.8'
+
+# Docker Compose configuration using pre-built image from GitHub Container Registry
+# This is the recommended configuration for production deployments
+
+services:
+  discord-bot:
+    image: ghcr.io/klemenkobau/discord-bot:latest
+    container_name: kobi-kendo-discord-bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+    # Optionally mount a .env file instead of using environment variables
+    # env_file:
+    #   - .env

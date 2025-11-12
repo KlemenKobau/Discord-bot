@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Docker Compose configuration for local development
+# This builds the image from source
+
 services:
   discord-bot:
     build:
@@ -13,3 +16,7 @@ services:
     # Optionally mount a .env file instead of using environment variables
     # env_file:
     #   - .env
+
+# For production deployments using pre-built images from GitHub Container Registry,
+# use docker-compose.ghcr.yml instead:
+#   docker-compose -f docker-compose.ghcr.yml up -d

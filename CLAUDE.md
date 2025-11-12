@@ -134,13 +134,61 @@ The bot uses the `tracing` crate for structured logging:
 4. Stop: `docker-compose down`
 
 **Building and Publishing**:
+
+The project uses GitHub Actions to automatically build and publish Docker images to GitHub Container Registry (GHCR) on every push to main and on version tags.
+
+Manual publishing (if needed):
 ```bash
 # Build the image
 docker build -t kobi-kendo-discord-bot:latest .
 
-# Tag for registry (example with Docker Hub)
-docker tag kobi-kendo-discord-bot:latest username/kobi-kendo-discord-bot:latest
+# Tag for GitHub Container Registry
+docker tag kobi-kendo-discord-bot:latest ghcr.io/klemenkobau/discord-bot:latest
+
+# Login to GHCR (requires GitHub personal access token with packages:write permission)
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
 # Push to registry
-docker push username/kobi-kendo-discord-bot:latest
+docker push ghcr.io/klemenkobau/discord-bot:latest
+```
+
+**Using Pre-built Images from GHCR**:
+```bash
+# Pull the latest image
+docker pull ghcr.io/klemenkobau/discord-bot:latest
+
+# Run it
+docker run -d -e DISCORD_TOKEN=your_token ghcr.io/klemenkobau/discord-bot:latest
+```
+
+## Continuous Integration
+
+### GitHub Actions Workflow
+
+The project includes a CI/CD pipeline ([.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml)) that:
+- Builds Docker images on every push to main
+- Publishes images to GitHub Container Registry (ghcr.io)
+- Creates tags for version releases (when you push a git tag like `v1.0.0`)
+- Uses Docker layer caching for faster builds
+- Only pushes images on main branch (not on pull requests)
+
+**Workflow triggers:**
+- Push to `main` branch → builds and pushes `latest` and `main-<sha>` tags
+- Push version tag (e.g., `v1.0.0`) → builds and pushes version-specific tags
+- Pull requests → builds but doesn't push (validation only)
+
+**Available image tags:**
+- `ghcr.io/klemenkobau/discord-bot:latest` - Latest build from main
+- `ghcr.io/klemenkobau/discord-bot:main-<sha>` - Specific commit from main
+- `ghcr.io/klemenkobau/discord-bot:v1.0.0` - Specific version (when tagged)
+- `ghcr.io/klemenkobau/discord-bot:1.0` - Major.minor version
+- `ghcr.io/klemenkobau/discord-bot:1` - Major version only
+
+**Creating a release:**
+```bash
+# Tag a new version
+git tag v1.0.0
+git push origin v1.0.0
+
+# GitHub Actions will automatically build and push the versioned images
 ```
