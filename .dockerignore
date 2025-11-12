@@ -1,0 +1,25 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Build artifacts
+target/
+.shuttle-storage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+Secrets*.toml
+
+# Documentation
+README.md
+CLAUDE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

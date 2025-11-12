@@ -116,8 +116,7 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     // Get the discord token from environment
-    let token = env::var("DISCORD_TOKEN")
-        .expect("Expected DISCORD_TOKEN environment variable");
+    let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN environment variable");
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES

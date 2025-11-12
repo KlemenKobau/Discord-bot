@@ -17,11 +17,22 @@ This is a Discord bot for a Kendo Discord server, built in Rust using the Sereni
 - `cargo clippy` - Run the linter for Rust best practices
 - `cargo fmt` - Format the code
 
-### Deployment (Self-Hosted)
+### Deployment
+
+**Direct Binary Deployment:**
 - Build: `cargo build --release`
 - Run: `./target/release/kobi-kendo-discord-bot` (requires `DISCORD_TOKEN` environment variable)
-- Recommended: Use systemd service or Docker container for production
+
+**Docker Deployment (Recommended):**
+- Build image: `docker build -t kobi-kendo-discord-bot .`
+- Run container: `docker run -e DISCORD_TOKEN=your_token kobi-kendo-discord-bot`
+- Or use docker-compose: `docker-compose up -d`
+
+**Production Considerations:**
+- Use systemd service for binary deployment or Docker/Docker Compose for containerized deployment
 - Ensure the bot has network access to Discord's API endpoints
+- Consider implementing health checks and automatic restarts
+- Monitor logs with `docker logs -f kobi-kendo-discord-bot` or systemd journal
 
 ## Architecture
 
@@ -101,3 +112,35 @@ The bot uses the `tracing` crate for structured logging:
 - Uses `.env` file for local development (copy from `.env.example`)
 - Includes graceful shutdown on Ctrl-C
 - All tests passing with `cargo check` and `cargo clippy`
+
+### Docker Setup
+
+**Files**:
+- [Dockerfile](Dockerfile) - Multi-stage build for optimized image size
+- [.dockerignore](.dockerignore) - Excludes unnecessary files from build context
+- [docker-compose.yml](docker-compose.yml) - Simplified deployment configuration
+
+**Docker Image Details**:
+- Uses multi-stage build (builder + runtime)
+- Builder: rust:1.84-slim with build dependencies
+- Runtime: debian:bookworm-slim with minimal dependencies
+- Runs as non-root user (botuser, UID 1000)
+- Final image contains only the compiled binary and runtime dependencies
+
+**Quick Start with Docker**:
+1. Create `.env` file with `DISCORD_TOKEN=your_token_here`
+2. Run: `docker-compose up -d`
+3. Check logs: `docker-compose logs -f`
+4. Stop: `docker-compose down`
+
+**Building and Publishing**:
+```bash
+# Build the image
+docker build -t kobi-kendo-discord-bot:latest .
+
+# Tag for registry (example with Docker Hub)
+docker tag kobi-kendo-discord-bot:latest username/kobi-kendo-discord-bot:latest
+
+# Push to registry
+docker push username/kobi-kendo-discord-bot:latest
+```
