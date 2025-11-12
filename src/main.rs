@@ -8,7 +8,7 @@ use serenity::prelude::*;
 use std::env;
 use tracing::{error, info, warn};
 
-const MONITORED_MESSAGE: u64 = 1183140575361368064;
+const MONITORED_MESSAGE: u64 = 1438242531782561844;
 const ANIME_ROLE_ID: u64 = 942341466540355584;
 const ANIME_ROLE_EMOJI: &str = "🎎";
 
