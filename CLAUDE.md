@@ -6,7 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Discord bot for a Kendo Discord server, built in Rust using the Serenity framework. The bot implements reaction-based role management, where users can self-assign roles by reacting to specific messages with emojis.
 
-**Status**: Successfully migrated from Shuttle.rs to self-hosted deployment.
+**Status**: Successfully migrated from Shuttle.rs to self-hosted deployment with automated CI/CD.
+
+**Recent Session Work (2025-11-12)**:
+- Created comprehensive CLAUDE.md documentation
+- Updated all dependencies to latest versions (Serenity 0.12.4, Tokio 1.48.0, etc.)
+- Migrated from Shuttle.rs to self-hosted deployment with dotenvy
+- Created multi-stage Dockerfile for optimized builds
+- Set up GitHub Actions CI/CD pipeline for automatic Docker builds
+- Published to GitHub Container Registry (ghcr.io)
+- Created v1.0.0 release tag
+- Fixed Docker tag format issue in workflow (sha- prefix)
 
 ## Commands
 
@@ -173,13 +183,14 @@ The project includes a CI/CD pipeline ([.github/workflows/docker-publish.yml](.g
 - Only pushes images on main branch (not on pull requests)
 
 **Workflow triggers:**
-- Push to `main` branch → builds and pushes `latest` and `main-<sha>` tags
+- Push to `main` branch → builds and pushes `latest` and `sha-<commit>` tags
 - Push version tag (e.g., `v1.0.0`) → builds and pushes version-specific tags
 - Pull requests → builds but doesn't push (validation only)
 
 **Available image tags:**
 - `ghcr.io/klemenkobau/discord-bot:latest` - Latest build from main
-- `ghcr.io/klemenkobau/discord-bot:main-<sha>` - Specific commit from main
+- `ghcr.io/klemenkobau/discord-bot:main` - Main branch tag
+- `ghcr.io/klemenkobau/discord-bot:sha-<commit>` - Specific commit from any branch
 - `ghcr.io/klemenkobau/discord-bot:v1.0.0` - Specific version (when tagged)
 - `ghcr.io/klemenkobau/discord-bot:1.0` - Major.minor version
 - `ghcr.io/klemenkobau/discord-bot:1` - Major version only
@@ -187,8 +198,35 @@ The project includes a CI/CD pipeline ([.github/workflows/docker-publish.yml](.g
 **Creating a release:**
 ```bash
 # Tag a new version
-git tag v1.0.0
+git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 
 # GitHub Actions will automatically build and push the versioned images
 ```
+
+### Making the Container Registry Public
+
+To allow anyone to pull Docker images without authentication:
+
+1. **Wait for first build to complete:**
+   - Go to: https://github.com/KlemenKobau/Discord-bot/actions
+   - Wait for "Build and Publish Docker Image" workflow to finish
+
+2. **Navigate to package settings:**
+   - Go to: https://github.com/KlemenKobau/Discord-bot/pkgs/container/discord-bot
+   - Or: GitHub profile → Packages → discord-bot
+
+3. **Change visibility:**
+   - Click "Package settings" (right side)
+   - Scroll to "Danger Zone" section
+   - Click "Change visibility"
+   - Select "Public"
+   - Confirm the change
+
+4. **Verify public access:**
+   ```bash
+   # Test pulling without authentication
+   docker pull ghcr.io/klemenkobau/discord-bot:latest
+   ```
+
+**Note:** Making the package public means anyone can pull the Docker images without needing GitHub authentication. This is recommended for open-source projects.
