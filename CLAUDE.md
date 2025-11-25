@@ -46,25 +46,59 @@ This is a Discord bot for a Kendo Discord server, built in Rust using the Sereni
 
 ## Architecture
 
-### Core Components
+The codebase follows Rust best practices with a modular structure separating concerns into distinct modules.
 
-**Bot Event Handler** ([src/main.rs](src/main.rs))
-- Implements Serenity's `EventHandler` trait
+### Project Structure
+
+```
+src/
+├── main.rs           - Application entry point and configuration
+├── lib.rs            - Library root, exports public modules
+├── config.rs         - Configuration management from environment
+├── handler.rs        - Discord event handler implementation
+├── roles.rs          - Role management logic and utilities
+└── logging.rs        - Logging initialization (console + Loki)
+```
+
+### Core Modules
+
+**[src/main.rs](src/main.rs)** - Entry Point
+- Loads configuration from environment variables
+- Initializes logging system
+- Sets up Discord bot with role reaction configurations
+- Handles graceful shutdown on Ctrl-C
+
+**[src/config.rs](src/config.rs)** - Configuration
+- `Config` struct for all environment-based configuration
+- Validates required environment variables (DISCORD_TOKEN)
+- Handles optional Loki/Grafana Cloud settings
+- Helper methods: `has_loki()`, `has_loki_auth()`
+
+**[src/handler.rs](src/handler.rs)** - Event Handler
+- `BotHandler` implements Serenity's `EventHandler` trait
 - Monitors `reaction_add` and `reaction_remove` events
-- Uses helper functions to validate reactions and manage members
+- Supports multiple role reaction configurations
+- Automatically matches reactions to configured roles
 
-**Role Management System**
-- Reaction-based self-service role assignment
-- Configuration via constants:
-  - `MONITORED_MESSAGE` - The message ID that the bot watches for reactions
-  - `ANIME_ROLE_ID` - The role ID to assign/remove
-  - `ANIME_ROLE_EMOJI` - The emoji users react with
-- Flow: User reacts → Bot validates → Bot assigns/removes role
+**[src/roles.rs](src/roles.rs)** - Role Management
+- `RoleReaction` struct for configuring message/role/emoji mappings
+- `get_member()` - Retrieves Discord member from reaction with error handling
+- `add_role()` / `remove_role()` - Clean interfaces for role management
+- Extensible design for adding multiple role reactions
 
-**Key Functions**
-- `is_message_relevant_for_bot()` - Filters reactions to only process the configured message and emoji
-- `get_member()` - Retrieves Discord member object from reaction data with error handling
-- `reaction_add()` / `reaction_remove()` - Event handlers that assign or remove roles
+**[src/logging.rs](src/logging.rs)** - Logging Setup
+- Initializes tracing subscriber with console output
+- Optional Loki integration for centralized logging
+- Supports Grafana Cloud authentication
+- Graceful fallback to console-only if Loki fails
+
+### Role Reaction System
+
+The bot uses a flexible role reaction system:
+- Configuration via `RoleReaction` instances in [src/main.rs](src/main.rs)
+- Each reaction links: message ID + emoji → role ID
+- Flow: User reacts → Handler validates → Role assigned/removed
+- Easy to extend for multiple roles by adding to the `role_reactions` vector
 
 ### Dependencies
 
@@ -84,12 +118,17 @@ This is a Discord bot for a Kendo Discord server, built in Rust using the Sereni
   - For local development: Copy `.env.example` to `.env` and add your token
   - For production: Set as system environment variable
 - `LOKI_URL` (optional) - Loki endpoint URL for centralized logging
-  - Example: `http://localhost:3100` or `https://logs.example.com`
+  - Self-hosted: `http://localhost:3100` or `https://logs.example.com`
+  - Grafana Cloud: `https://logs-prod-XXX.grafana.net/loki/api/v1/push`
   - If not set, logs will only be written to console/stdout
+- `LOKI_USERNAME` (optional) - Username for Grafana Cloud authentication
+  - Only required when using Grafana Cloud
+- `LOKI_API_KEY` (optional) - API token for Grafana Cloud authentication
+  - Only required when using Grafana Cloud
 - `ENVIRONMENT` (optional) - Environment label for Loki logs (defaults to `production`)
   - Common values: `development`, `staging`, `production`
 
-**Gateway Intents** ([src/main.rs:123-126](src/main.rs#L123-L126)):
+**Gateway Intents** ([src/main.rs:29-32](src/main.rs#L29-L32)):
 - `GUILD_MESSAGES` - Access to message data
 - `GUILD_MESSAGE_REACTIONS` - Access to reaction events
 - `MESSAGE_CONTENT` - Access to message content
@@ -97,11 +136,24 @@ This is a Discord bot for a Kendo Discord server, built in Rust using the Sereni
 
 ### Adding New Role Reactions
 
-To add support for additional role-based reactions:
-1. Add new constants for the role ID and emoji at the top of [src/main.rs](src/main.rs)
-2. Extend `is_message_relevant_for_bot()` to handle multiple emoji types
-3. Modify `reaction_add()` and `reaction_remove()` to map emojis to their respective role IDs
-4. Consider refactoring to use a HashMap or match statement for multiple role mappings
+The modular design makes adding new role reactions simple:
+
+1. **Add constants** for the new role at the top of [src/main.rs](src/main.rs):
+   ```rust
+   const NEW_MESSAGE_ID: u64 = 1234567890;
+   const NEW_ROLE_ID: u64 = 9876543210;
+   const NEW_EMOJI: &str = "🎮";
+   ```
+
+2. **Add to role_reactions vector** in `main()`:
+   ```rust
+   let role_reactions = vec![
+       RoleReaction::new(MONITORED_MESSAGE, ANIME_ROLE_ID, ANIME_ROLE_EMOJI),
+       RoleReaction::new(NEW_MESSAGE_ID, NEW_ROLE_ID, NEW_EMOJI),
+   ];
+   ```
+
+That's it! The handler automatically processes all configured role reactions. No need to modify any other code.
 
 ### Logging
 
@@ -119,6 +171,8 @@ The bot uses the `tracing` crate for structured logging with optional Loki integ
 - If Loki is unreachable, logs still appear in console (no data loss)
 
 **Example Loki Setup**:
+
+Self-hosted Loki:
 ```bash
 # In .env file
 LOKI_URL=http://loki-server:3100
@@ -128,9 +182,47 @@ ENVIRONMENT=production
 docker run -e DISCORD_TOKEN=xxx -e LOKI_URL=http://loki:3100 ghcr.io/klemenkobau/discord-bot:latest
 ```
 
+Grafana Cloud:
+```bash
+# In .env file
+LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push
+LOKI_USERNAME=123456
+LOKI_API_KEY=glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ENVIRONMENT=production
+
+# Or with Docker
+docker run \
+  -e DISCORD_TOKEN=xxx \
+  -e LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push \
+  -e LOKI_USERNAME=123456 \
+  -e LOKI_API_KEY=glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  ghcr.io/klemenkobau/discord-bot:latest
+```
+
 ## Migration Notes
 
-### Shuttle.rs to Self-Hosted Migration (Completed)
+### Code Refactoring to Modular Architecture (2025-11-25)
+
+**What Changed**:
+- ✅ Split monolithic `main.rs` into clean, focused modules
+- ✅ Created `src/lib.rs` as library root exposing public API
+- ✅ Extracted `config.rs` for environment variable management
+- ✅ Extracted `handler.rs` for Discord event handling logic
+- ✅ Extracted `roles.rs` for role management utilities
+- ✅ Extracted `logging.rs` for logging initialization
+- ✅ Improved extensibility - adding new role reactions now requires only 2 lines of code
+- ✅ Better separation of concerns following Rust best practices
+- ✅ Maintained backward compatibility - no configuration changes needed
+- ✅ All tests passing with `cargo check` and `cargo clippy`
+
+**Benefits**:
+- **Maintainability**: Each module has a single, clear responsibility
+- **Testability**: Individual modules can be unit tested in isolation
+- **Extensibility**: Easy to add new features without modifying existing code
+- **Readability**: Smaller files with focused functionality
+- **Reusability**: Core logic can be used as a library by other projects
+
+### Shuttle.rs to Self-Hosted Migration (2025-11-12)
 
 **What Changed**:
 - ✅ Removed Shuttle.rs platform dependencies (shuttle-serenity, shuttle-runtime, shuttle-secrets)

@@ -159,17 +159,38 @@ The bot supports both console and centralized logging via Loki:
 
 To enable centralized logging with Loki:
 
-1. Set the `LOKI_URL` environment variable to your Loki endpoint:
+**For Self-hosted Loki:**
+
+1. Set the `LOKI_URL` environment variable:
    ```bash
    # In .env file
    LOKI_URL=http://localhost:3100
    ENVIRONMENT=production
    ```
 
-2. Run the bot - it will automatically detect and use Loki if configured
+**For Grafana Cloud:**
 
-3. View logs in Grafana or query Loki directly:
+1. Get your Grafana Cloud credentials:
+   - Go to your Grafana Cloud dashboard
+   - Navigate to "Connections" → "Data Sources" → "Loki"
+   - Find your Loki URL (e.g., `https://logs-prod-XXX.grafana.net/loki/api/v1/push`)
+   - Create an API token under "Security" → "API Keys" or "Service Accounts"
+   - Note your User ID (visible in the Loki details)
+
+2. Set the environment variables:
+   ```bash
+   # In .env file
+   LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push
+   LOKI_USERNAME=123456
+   LOKI_API_KEY=glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ENVIRONMENT=production
    ```
+
+3. Run the bot - it will automatically detect and use Loki if configured
+
+4. View logs in Grafana or query Loki directly:
+   ```
+   {service="discord-bot"}
    {service="discord-bot", environment="production"}
    ```
 
