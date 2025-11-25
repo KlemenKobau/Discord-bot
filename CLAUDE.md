@@ -72,15 +72,22 @@ This is a Discord bot for a Kendo Discord server, built in Rust using the Sereni
 - **tokio (v1.48.0)** - Async runtime with macros, multi-threaded runtime, and signal handling
 - **tracing (v0.1.41)** - Structured logging
 - **tracing-subscriber (v0.3)** - Logging subscriber for formatting and output
+- **tracing-loki (v0.2)** - Loki integration for centralized logging
+- **url (v2.5)** - URL parsing for Loki endpoint configuration
 - **anyhow (v1.0.100)** - Error handling
 - **dotenvy (v0.15.7)** - Environment variable loading from .env file
 
 ### Configuration
 
 **Environment Variables**:
-- `DISCORD_TOKEN` - Bot authentication token from Discord Developer Portal
+- `DISCORD_TOKEN` (required) - Bot authentication token from Discord Developer Portal
   - For local development: Copy `.env.example` to `.env` and add your token
   - For production: Set as system environment variable
+- `LOKI_URL` (optional) - Loki endpoint URL for centralized logging
+  - Example: `http://localhost:3100` or `https://logs.example.com`
+  - If not set, logs will only be written to console/stdout
+- `ENVIRONMENT` (optional) - Environment label for Loki logs (defaults to `production`)
+  - Common values: `development`, `staging`, `production`
 
 **Gateway Intents** ([src/main.rs:123-126](src/main.rs#L123-L126)):
 - `GUILD_MESSAGES` - Access to message data
@@ -98,10 +105,28 @@ To add support for additional role-based reactions:
 
 ### Logging
 
-The bot uses the `tracing` crate for structured logging:
+The bot uses the `tracing` crate for structured logging with optional Loki integration:
+
+**Log Levels**:
 - `info!` - Successful role assignments/removals and bot startup
 - `warn!` - Missing user/guild IDs or member lookup failures
 - `error!` - Discord API errors when modifying roles
+
+**Loki Integration** (optional):
+- Set `LOKI_URL` environment variable to enable centralized logging
+- Logs are sent to Loki with labels: `service=discord-bot`, `environment=<ENVIRONMENT>`
+- The bot continues to log to console even when Loki is enabled
+- If Loki is unreachable, logs still appear in console (no data loss)
+
+**Example Loki Setup**:
+```bash
+# In .env file
+LOKI_URL=http://loki-server:3100
+ENVIRONMENT=production
+
+# Or with Docker
+docker run -e DISCORD_TOKEN=xxx -e LOKI_URL=http://loki:3100 ghcr.io/klemenkobau/discord-bot:latest
+```
 
 ## Migration Notes
 

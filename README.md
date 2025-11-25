@@ -80,7 +80,14 @@ To use a specific version, replace `latest` with the version tag (e.g., `v1.0.0`
 
 ## Configuration
 
-The bot requires a `DISCORD_TOKEN` environment variable. Get your bot token from the [Discord Developer Portal](https://discord.com/developers/applications).
+The bot requires configuration through environment variables:
+
+### Required
+- `DISCORD_TOKEN` - Get your bot token from the [Discord Developer Portal](https://discord.com/developers/applications)
+
+### Optional
+- `LOKI_URL` - Loki endpoint for centralized logging (e.g., `http://localhost:3100`)
+- `ENVIRONMENT` - Environment label for logs (defaults to `production`)
 
 ### Current Configuration
 
@@ -140,6 +147,33 @@ DISCORD_TOKEN=your_token ./target/release/kobi-kendo-discord-bot
 - `cargo check` - Quick check for compilation errors
 - `cargo clippy` - Run the linter
 - `cargo fmt` - Format the code
+
+## Logging
+
+The bot supports both console and centralized logging via Loki:
+
+- **Console Logging**: Always enabled, writes to stdout
+- **Loki Integration**: Optional, enable by setting `LOKI_URL` environment variable
+
+### Setting up Loki
+
+To enable centralized logging with Loki:
+
+1. Set the `LOKI_URL` environment variable to your Loki endpoint:
+   ```bash
+   # In .env file
+   LOKI_URL=http://localhost:3100
+   ENVIRONMENT=production
+   ```
+
+2. Run the bot - it will automatically detect and use Loki if configured
+
+3. View logs in Grafana or query Loki directly:
+   ```
+   {service="discord-bot", environment="production"}
+   ```
+
+If Loki is not configured or unreachable, logs continue to be written to console normally.
 
 ## License
 

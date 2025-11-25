@@ -7,6 +7,8 @@ use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use std::env;
 use tracing::{error, info, warn};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 const MONITORED_MESSAGE: u64 = 1438242531782561844;
 const ANIME_ROLE_ID: u64 = 942341466540355584;
@@ -109,11 +111,48 @@ impl EventHandler for Bot {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
-
     // Load environment variables from .env file (if it exists)
     dotenvy::dotenv().ok();
+
+    // Initialize logging with optional Loki integration
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    // Check if Loki URL is configured
+    let loki_url = env::var("LOKI_URL").ok();
+
+    if let Some(url) = loki_url {
+        info!("Loki URL configured: {}", url);
+
+        // Parse Loki URL
+        let url = url::Url::parse(&url).expect("Invalid LOKI_URL format");
+
+        // Build Loki layer with labels
+        let (loki_layer, task) = tracing_loki::builder()
+            .label("service", "discord-bot")
+            .expect("Failed to set service label")
+            .label("environment", env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string()))
+            .expect("Failed to set environment label")
+            .build_url(url)
+            .expect("Failed to build Loki layer");
+
+        // Spawn the Loki task to send logs in the background
+        tokio::spawn(task);
+
+        // Initialize subscriber with both fmt and Loki layers
+        tracing_subscriber::registry()
+            .with(fmt_layer)
+            .with(loki_layer)
+            .init();
+
+        info!("Logging initialized with Loki integration");
+    } else {
+        // Initialize with just fmt layer (console logging)
+        tracing_subscriber::registry()
+            .with(fmt_layer)
+            .init();
+
+        info!("Logging initialized (Loki disabled - set LOKI_URL to enable)");
+    }
 
     // Get the discord token from environment
     let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN environment variable");
