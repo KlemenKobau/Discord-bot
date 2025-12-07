@@ -86,8 +86,9 @@ The bot requires configuration through environment variables:
 - `DISCORD_TOKEN` - Get your bot token from the [Discord Developer Portal](https://discord.com/developers/applications)
 
 ### Optional
-- `LOKI_URL` - Loki endpoint for centralized logging (e.g., `http://localhost:3100`)
-- `ENVIRONMENT` - Environment label for logs (defaults to `production`)
+- `OTLP_ENDPOINT` - OpenTelemetry OTLP endpoint for traces and logs (e.g., `http://localhost:4317`)
+- `OTLP_HEADERS` - Authentication headers for OTLP (format: `key1=value1,key2=value2`)
+- `ENVIRONMENT` - Environment label for traces and logs (defaults to `production`)
 
 ### Current Configuration
 
@@ -148,53 +149,63 @@ DISCORD_TOKEN=your_token ./target/release/kobi-kendo-discord-bot
 - `cargo clippy` - Run the linter
 - `cargo fmt` - Format the code
 
-## Logging
+## Logging and Observability
 
-The bot supports both console and centralized logging via Loki:
+The bot supports both console logging and distributed tracing via OpenTelemetry:
 
 - **Console Logging**: Always enabled, writes to stdout
-- **Loki Integration**: Optional, enable by setting `LOKI_URL` environment variable
+- **OpenTelemetry Integration**: Optional, enable by setting `OTLP_ENDPOINT` environment variable
 
-### Setting up Loki
+### Setting up OpenTelemetry
 
-To enable centralized logging with Loki:
-
-**For Self-hosted Loki:**
-
-1. Set the `LOKI_URL` environment variable:
-   ```bash
-   # In .env file
-   LOKI_URL=http://localhost:3100
-   ENVIRONMENT=production
-   ```
+To enable distributed tracing and logging with OpenTelemetry:
 
 **For Grafana Cloud:**
 
-1. Get your Grafana Cloud credentials:
+1. Get your Grafana Cloud OTLP credentials:
    - Go to your Grafana Cloud dashboard
-   - Navigate to "Connections" → "Data Sources" → "Loki"
-   - Find your Loki URL (e.g., `https://logs-prod-XXX.grafana.net/loki/api/v1/push`)
-   - Create an API token under "Security" → "API Keys" or "Service Accounts"
-   - Note your User ID (visible in the Loki details)
+   - Navigate to "Connections" → "Add new connection" → "OpenTelemetry"
+   - Find your OTLP endpoint (e.g., `https://otlp-gateway-prod-XXX.grafana.net/otlp`)
+   - Create an access token under "Security" → "Access Policies" or use existing credentials
+   - Encode your credentials: `echo -n "instance_id:token" | base64`
 
 2. Set the environment variables:
    ```bash
    # In .env file
-   LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push
-   LOKI_USERNAME=123456
-   LOKI_API_KEY=glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   OTLP_ENDPOINT=https://otlp-gateway-prod-XXX.grafana.net/otlp
+   OTLP_HEADERS=Authorization=Basic <base64_encoded_credentials>
    ENVIRONMENT=production
    ```
 
-3. Run the bot - it will automatically detect and use Loki if configured
+**For Honeycomb:**
 
-4. View logs in Grafana or query Loki directly:
-   ```
-   {service="discord-bot"}
-   {service="discord-bot", environment="production"}
+```bash
+# In .env file
+OTLP_ENDPOINT=https://api.honeycomb.io:443
+OTLP_HEADERS=x-honeycomb-team=your_api_key
+ENVIRONMENT=production
+```
+
+**For Local Development (Jaeger):**
+
+1. Start Jaeger with OTLP support:
+   ```bash
+   docker run -d --name jaeger \
+     -p 4317:4317 \
+     -p 16686:16686 \
+     jaegertracing/all-in-one:latest
    ```
 
-If Loki is not configured or unreachable, logs continue to be written to console normally.
+2. Configure the bot:
+   ```bash
+   # In .env file
+   OTLP_ENDPOINT=http://localhost:4317
+   ENVIRONMENT=development
+   ```
+
+3. View traces at [http://localhost:16686](http://localhost:16686)
+
+If OpenTelemetry is not configured or unreachable, logs continue to be written to console normally.
 
 ## License
 

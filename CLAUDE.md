@@ -8,15 +8,12 @@ This is a Discord bot for a Kendo Discord server, built in Rust using the Sereni
 
 **Status**: Successfully migrated from Shuttle.rs to self-hosted deployment with automated CI/CD.
 
-**Recent Session Work (2025-11-12)**:
-- Created comprehensive CLAUDE.md documentation
-- Updated all dependencies to latest versions (Serenity 0.12.4, Tokio 1.48.0, etc.)
-- Migrated from Shuttle.rs to self-hosted deployment with dotenvy
-- Created multi-stage Dockerfile for optimized builds
-- Set up GitHub Actions CI/CD pipeline for automatic Docker builds
-- Published to GitHub Container Registry (ghcr.io)
-- Created v1.0.0 release tag
-- Fixed Docker tag format issue in workflow (sha- prefix)
+**Recent Updates**:
+- **2025-12-07**: Migrated from Loki to OpenTelemetry for observability (supports Grafana, Jaeger, Honeycomb, etc.)
+- **2025-11-25**: Split monolithic codebase into clean modular architecture (config, handler, roles, logging modules)
+- **2025-11-12**: Migrated from Shuttle.rs to self-hosted deployment with Docker support and CI/CD
+- Set up GitHub Actions pipeline for automatic builds to GHCR (ghcr.io)
+- Updated all dependencies to latest versions (Serenity 0.12.4, Tokio 1.48.0)
 
 ## Commands
 
@@ -71,8 +68,8 @@ src/
 **[src/config.rs](src/config.rs)** - Configuration
 - `Config` struct for all environment-based configuration
 - Validates required environment variables (DISCORD_TOKEN)
-- Handles optional Loki/Grafana Cloud settings
-- Helper methods: `has_loki()`, `has_loki_auth()`
+- Handles optional OpenTelemetry OTLP settings
+- Helper methods: `has_otlp()`, `parse_otlp_headers()`
 
 **[src/handler.rs](src/handler.rs)** - Event Handler
 - `BotHandler` implements Serenity's `EventHandler` trait
@@ -88,9 +85,9 @@ src/
 
 **[src/logging.rs](src/logging.rs)** - Logging Setup
 - Initializes tracing subscriber with console output
-- Optional Loki integration for centralized logging
-- Supports Grafana Cloud authentication
-- Graceful fallback to console-only if Loki fails
+- Optional OpenTelemetry OTLP integration for distributed tracing and logging
+- Supports custom headers for authentication (Grafana Cloud, Honeycomb, etc.)
+- Graceful fallback to console-only if OTLP is not configured
 
 ### Role Reaction System
 
@@ -106,8 +103,11 @@ The bot uses a flexible role reaction system:
 - **tokio (v1.48.0)** - Async runtime with macros, multi-threaded runtime, and signal handling
 - **tracing (v0.1.41)** - Structured logging
 - **tracing-subscriber (v0.3)** - Logging subscriber for formatting and output
-- **tracing-loki (v0.2)** - Loki integration for centralized logging
-- **url (v2.5)** - URL parsing for Loki endpoint configuration
+- **tracing-opentelemetry (v0.28)** - OpenTelemetry integration for distributed tracing
+- **opentelemetry (v0.27)** - OpenTelemetry API for traces and metrics
+- **opentelemetry_sdk (v0.27)** - OpenTelemetry SDK with Tokio runtime support
+- **opentelemetry-otlp (v0.27)** - OTLP exporter with gRPC support
+- **tonic (v0.12)** - gRPC client library for OTLP
 - **anyhow (v1.0.100)** - Error handling
 - **dotenvy (v0.15.7)** - Environment variable loading from .env file
 
@@ -117,22 +117,26 @@ The bot uses a flexible role reaction system:
 - `DISCORD_TOKEN` (required) - Bot authentication token from Discord Developer Portal
   - For local development: Copy `.env.example` to `.env` and add your token
   - For production: Set as system environment variable
-- `LOKI_URL` (optional) - Loki endpoint URL for centralized logging
-  - Self-hosted: `http://localhost:3100` or `https://logs.example.com`
-  - Grafana Cloud: `https://logs-prod-XXX.grafana.net/loki/api/v1/push`
+- `OTLP_ENDPOINT` (optional) - OpenTelemetry OTLP endpoint URL for traces and logs
+  - Local Jaeger: `http://localhost:4317`
+  - Local OTEL Collector: `http://localhost:4317`
+  - Grafana Cloud: `https://otlp-gateway-prod-XXX.grafana.net/otlp`
+  - Honeycomb: `https://api.honeycomb.io:443`
   - If not set, logs will only be written to console/stdout
-- `LOKI_USERNAME` (optional) - Username for Grafana Cloud authentication
-  - Only required when using Grafana Cloud
-- `LOKI_API_KEY` (optional) - API token for Grafana Cloud authentication
-  - Only required when using Grafana Cloud
-- `ENVIRONMENT` (optional) - Environment label for Loki logs (defaults to `production`)
+- `OTLP_HEADERS` (optional) - Authentication headers for OTLP endpoint (format: `key1=value1,key2=value2`)
+  - Grafana Cloud: `Authorization=Basic <base64_instance_id:token>`
+  - Honeycomb: `x-honeycomb-team=your_api_key`
+  - Generic API Key: `Authorization=Bearer your_token`
+- `ENVIRONMENT` (optional) - Environment label for traces and logs (defaults to `production`)
   - Common values: `development`, `staging`, `production`
 
 **Gateway Intents** ([src/main.rs:29-32](src/main.rs#L29-L32)):
-- `GUILD_MESSAGES` - Access to message data
-- `GUILD_MESSAGE_REACTIONS` - Access to reaction events
-- `MESSAGE_CONTENT` - Access to message content
+- `GUILD_MESSAGES` - Access to message data in guild channels
+- `GUILD_MESSAGE_REACTIONS` - Required for monitoring reaction add/remove events
+- `MESSAGE_CONTENT` - Access to message content (privileged intent - must be enabled in Discord Developer Portal)
 - `AUTO_MODERATION_CONFIGURATION` - Auto-moderation features
+
+**Note**: `MESSAGE_CONTENT` is a privileged intent. You must enable it in the Discord Developer Portal under your bot's settings (Bot → Privileged Gateway Intents).
 
 ### Adding New Role Reactions
 
@@ -155,48 +159,67 @@ The modular design makes adding new role reactions simple:
 
 That's it! The handler automatically processes all configured role reactions. No need to modify any other code.
 
-### Logging
+### Logging and Observability
 
-The bot uses the `tracing` crate for structured logging with optional Loki integration:
+The bot uses the `tracing` crate for structured logging with optional OpenTelemetry OTLP integration:
 
 **Log Levels**:
 - `info!` - Successful role assignments/removals and bot startup
 - `warn!` - Missing user/guild IDs or member lookup failures
 - `error!` - Discord API errors when modifying roles
 
-**Loki Integration** (optional):
-- Set `LOKI_URL` environment variable to enable centralized logging
-- Logs are sent to Loki with labels: `service=discord-bot`, `environment=<ENVIRONMENT>`
-- The bot continues to log to console even when Loki is enabled
-- If Loki is unreachable, logs still appear in console (no data loss)
+**OpenTelemetry Integration** (optional):
+- Set `OTLP_ENDPOINT` environment variable to enable distributed tracing and logging
+- Traces and logs are sent via OTLP with resource attributes: `service.name=discord-bot`, `service.environment=<ENVIRONMENT>`
+- The bot continues to log to console even when OTLP is enabled
+- If OTLP endpoint is unreachable, logs still appear in console (no data loss)
+- Supports multiple backends: Grafana Cloud, Jaeger, Honeycomb, Datadog, and any OTLP-compatible collector
 
-**Example Loki Setup**:
+**Example OpenTelemetry Setups**:
 
-Self-hosted Loki:
+**Grafana Cloud:**
 ```bash
 # In .env file
-LOKI_URL=http://loki-server:3100
-ENVIRONMENT=production
-
-# Or with Docker
-docker run -e DISCORD_TOKEN=xxx -e LOKI_URL=http://loki:3100 ghcr.io/klemenkobau/discord-bot:latest
-```
-
-Grafana Cloud:
-```bash
-# In .env file
-LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push
-LOKI_USERNAME=123456
-LOKI_API_KEY=glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+OTLP_ENDPOINT=https://otlp-gateway-prod-XXX.grafana.net/otlp
+OTLP_HEADERS=Authorization=Basic <base64_instance_id:token>
 ENVIRONMENT=production
 
 # Or with Docker
 docker run \
   -e DISCORD_TOKEN=xxx \
-  -e LOKI_URL=https://logs-prod-XXX.grafana.net/loki/api/v1/push \
-  -e LOKI_USERNAME=123456 \
-  -e LOKI_API_KEY=glc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  -e OTLP_ENDPOINT=https://otlp-gateway-prod-XXX.grafana.net/otlp \
+  -e OTLP_HEADERS="Authorization=Basic <base64_token>" \
   ghcr.io/klemenkobau/discord-bot:latest
+```
+
+**Honeycomb:**
+```bash
+# In .env file
+OTLP_ENDPOINT=https://api.honeycomb.io:443
+OTLP_HEADERS=x-honeycomb-team=your_api_key
+ENVIRONMENT=production
+```
+
+**Local Jaeger (for development):**
+```bash
+# Start Jaeger with OTLP support
+docker run -d --name jaeger \
+  -p 4317:4317 \
+  -p 16686:16686 \
+  jaegertracing/all-in-one:latest
+
+# In .env file
+OTLP_ENDPOINT=http://localhost:4317
+ENVIRONMENT=development
+
+# View traces at http://localhost:16686
+```
+
+**Local OpenTelemetry Collector:**
+```bash
+# In .env file
+OTLP_ENDPOINT=http://localhost:4317
+ENVIRONMENT=production
 ```
 
 ## Migration Notes

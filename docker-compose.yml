@@ -13,10 +13,10 @@ services:
     restart: unless-stopped
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - LOKI_URL=${LOKI_URL:-}
-      - LOKI_USERNAME=${LOKI_USERNAME:-}
-      - LOKI_API_KEY=${LOKI_API_KEY:-}
+      - OTLP_ENDPOINT=${OTLP_ENDPOINT:-}
+      - OTLP_HEADERS=${OTLP_HEADERS:-}
       - ENVIRONMENT=${ENVIRONMENT:-production}
+      - RUST_LOG=${RUST_LOG:-info}
     # Optionally mount a .env file instead of using environment variables
     # env_file:
     #   - .env

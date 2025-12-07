@@ -7,14 +7,11 @@ pub struct Config {
     /// Discord bot token
     pub discord_token: String,
 
-    /// Loki endpoint URL (optional)
-    pub loki_url: Option<String>,
+    /// OpenTelemetry OTLP endpoint URL (optional)
+    pub otlp_endpoint: Option<String>,
 
-    /// Loki username for Grafana Cloud (optional)
-    pub loki_username: Option<String>,
-
-    /// Loki API key for Grafana Cloud (optional)
-    pub loki_api_key: Option<String>,
+    /// OpenTelemetry headers for authentication (optional, format: "key1=value1,key2=value2")
+    pub otlp_headers: Option<String>,
 
     /// Environment label for logs (defaults to "production")
     pub environment: String,
@@ -29,27 +26,39 @@ impl Config {
         let discord_token = env::var("DISCORD_TOKEN")
             .context("DISCORD_TOKEN environment variable is required")?;
 
-        let loki_url = env::var("LOKI_URL").ok();
-        let loki_username = env::var("LOKI_USERNAME").ok();
-        let loki_api_key = env::var("LOKI_API_KEY").ok();
+        let otlp_endpoint = env::var("OTLP_ENDPOINT").ok();
+        let otlp_headers = env::var("OTLP_HEADERS").ok();
         let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
 
         Ok(Self {
             discord_token,
-            loki_url,
-            loki_username,
-            loki_api_key,
+            otlp_endpoint,
+            otlp_headers,
             environment,
         })
     }
 
-    /// Check if Loki logging is configured
-    pub fn has_loki(&self) -> bool {
-        self.loki_url.is_some()
+    /// Check if OpenTelemetry is configured
+    pub fn has_otlp(&self) -> bool {
+        self.otlp_endpoint.is_some()
     }
 
-    /// Check if Grafana Cloud authentication is configured
-    pub fn has_loki_auth(&self) -> bool {
-        self.loki_username.is_some() && self.loki_api_key.is_some()
+    /// Parse OTLP headers from the configuration string
+    /// Expected format: "key1=value1,key2=value2"
+    pub fn parse_otlp_headers(&self) -> Option<Vec<(String, String)>> {
+        self.otlp_headers.as_ref().map(|headers| {
+            headers
+                .split(',')
+                .filter_map(|pair| {
+                    let mut parts = pair.split('=');
+                    match (parts.next(), parts.next()) {
+                        (Some(key), Some(value)) => {
+                            Some((key.trim().to_string(), value.trim().to_string()))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect()
+        })
     }
 }

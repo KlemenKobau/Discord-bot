@@ -1,66 +1,94 @@
 use crate::config::Config;
 use anyhow::Result;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
+use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_sdk::Resource;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 
-/// Initialize the logging system with optional Loki integration
+/// Initialize the logging system with optional OpenTelemetry integration
 pub fn init(config: &Config) -> Result<()> {
-    let fmt_layer = tracing_subscriber::fmt::layer();
+    // Create environment filter that respects RUST_LOG
+    // Defaults to "info" if RUST_LOG is not set
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // Check if Loki is configured
-    if let Some(loki_url) = &config.loki_url {
-        init_with_loki(fmt_layer, loki_url, config)
+    // Check if OpenTelemetry is configured
+    if config.has_otlp() {
+        init_with_otlp(env_filter, config)
     } else {
-        init_console_only(fmt_layer)
+        init_console_only(env_filter)
     }
 }
 
-/// Initialize logging with Loki integration
-fn init_with_loki(
-    fmt_layer: tracing_subscriber::fmt::Layer<tracing_subscriber::Registry>,
-    loki_url: &str,
-    config: &Config,
-) -> Result<()> {
-    info!("Loki URL configured: {}", loki_url);
+/// Initialize logging with OpenTelemetry OTLP integration
+fn init_with_otlp(env_filter: EnvFilter, config: &Config) -> Result<()> {
+    let otlp_endpoint = config
+        .otlp_endpoint
+        .as_ref()
+        .expect("OTLP endpoint should be present");
 
-    // Parse the Loki URL
-    let mut url = url::Url::parse(loki_url)?;
+    info!("OpenTelemetry OTLP endpoint configured: {}", otlp_endpoint);
 
-    // Add authentication if provided (for Grafana Cloud)
-    if let (Some(username), Some(api_key)) = (&config.loki_username, &config.loki_api_key) {
-        url.set_username(username)
-            .map_err(|_| anyhow::anyhow!("Failed to set Loki username"))?;
-        url.set_password(Some(api_key))
-            .map_err(|_| anyhow::anyhow!("Failed to set Loki API key"))?;
-        info!("Loki authentication configured for user: {}", username);
+    // Build the OTLP exporter with optional headers and timeout
+    let mut exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(otlp_endpoint)
+        .with_timeout(std::time::Duration::from_secs(30)); // Increase timeout to 30 seconds
+
+    // Add custom headers if configured (e.g., for authentication)
+    if let Some(headers) = config.parse_otlp_headers() {
+        let mut metadata = tonic::metadata::MetadataMap::new();
+        for (key, value) in &headers {
+            info!("Adding OTLP header: {} = {}", key, if key == "Authorization" { "***" } else { value });
+            if let Ok(meta_key) = tonic::metadata::MetadataKey::from_bytes(key.as_bytes()) {
+                if let Ok(meta_value) = value.parse() {
+                    metadata.insert(meta_key, meta_value);
+                }
+            }
+        }
+        exporter = exporter.with_metadata(metadata);
+    } else {
+        info!("No OTLP headers configured");
     }
 
-    // Build the Loki layer with labels
-    let (loki_layer, task) = tracing_loki::builder()
-        .label("service", "discord-bot")?
-        .label("environment", &config.environment)?
-        .build_url(url)?;
+    // Create resource with service information
+    let resource = Resource::new(vec![
+        KeyValue::new("service.name", "discord-bot"),
+        KeyValue::new("service.environment", config.environment.clone()),
+    ]);
 
-    // Spawn the Loki background task
-    tokio::spawn(task);
+    // Build the tracer provider
+    let tracer_provider = TracerProvider::builder()
+        .with_batch_exporter(exporter.build()?, opentelemetry_sdk::runtime::Tokio)
+        .with_resource(resource)
+        .build();
 
-    // Initialize the subscriber with both console and Loki layers
+    // Create the OpenTelemetry tracing layer
+    let tracer = tracer_provider.tracer("kendo-bot");
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+
+    // Initialize the subscriber with environment filter, console, and OpenTelemetry layers
     tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(loki_layer)
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer())
+        .with(otel_layer)
         .init();
 
-    info!("Logging initialized with Loki integration");
+    info!("Logging initialized with OpenTelemetry OTLP integration");
     Ok(())
 }
 
 /// Initialize console-only logging
-fn init_console_only(
-    fmt_layer: tracing_subscriber::fmt::Layer<tracing_subscriber::Registry>,
-) -> Result<()> {
-    tracing_subscriber::registry().with(fmt_layer).init();
+fn init_console_only(env_filter: EnvFilter) -> Result<()> {
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
-    info!("Logging initialized (Loki disabled - set LOKI_URL to enable)");
+    info!("Logging initialized (OpenTelemetry disabled - set OTLP_ENDPOINT to enable)");
     Ok(())
 }
