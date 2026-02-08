@@ -1,88 +1,86 @@
 use crate::config::Config;
-use anyhow::Result;
-use opentelemetry::trace::TracerProvider as _;
+use anyhow::{Context, Result};
 use opentelemetry::KeyValue;
-use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
-use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+use opentelemetry_sdk::logs::LoggerProvider;
 use opentelemetry_sdk::Resource;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
-/// Initialize the logging system with optional OpenTelemetry integration
-pub fn init(config: &Config) -> Result<()> {
-    // Create environment filter that respects RUST_LOG
-    // Defaults to "info" if RUST_LOG is not set
+pub fn init(config: &Config) -> Result<Option<LoggerProvider>> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // Check if OpenTelemetry is configured
     if config.has_otlp() {
-        init_with_otlp(env_filter, config)
+        init_with_otlp(env_filter, config).map(Some)
     } else {
-        init_console_only(env_filter)
+        init_console_only(env_filter)?;
+        Ok(None)
     }
 }
 
-/// Initialize logging with OpenTelemetry OTLP integration
-fn init_with_otlp(env_filter: EnvFilter, config: &Config) -> Result<()> {
+fn init_with_otlp(env_filter: EnvFilter, config: &Config) -> Result<LoggerProvider> {
     let otlp_endpoint = config
         .otlp_endpoint
         .as_ref()
-        .expect("OTLP endpoint should be present");
+        .context("OTLP endpoint is required but not configured")?;
 
-    info!("OpenTelemetry OTLP endpoint configured: {}", otlp_endpoint);
+    eprintln!("OpenTelemetry OTLP endpoint configured: {}", otlp_endpoint);
 
-    // Build the OTLP exporter with optional headers and timeout
-    let mut exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
-        .with_endpoint(otlp_endpoint)
-        .with_timeout(std::time::Duration::from_secs(30)); // Increase timeout to 30 seconds
-
-    // Add custom headers if configured (e.g., for authentication)
-    if let Some(headers) = config.parse_otlp_headers() {
-        let mut metadata = tonic::metadata::MetadataMap::new();
-        for (key, value) in &headers {
-            info!("Adding OTLP header: {} = {}", key, if key == "Authorization" { "***" } else { value });
-            if let Ok(meta_key) = tonic::metadata::MetadataKey::from_bytes(key.as_bytes()) {
-                if let Ok(meta_value) = value.parse() {
-                    metadata.insert(meta_key, meta_value);
-                }
-            }
-        }
-        exporter = exporter.with_metadata(metadata);
-    } else {
-        info!("No OTLP headers configured");
-    }
-
-    // Create resource with service information
     let resource = Resource::new(vec![
-        KeyValue::new("service.name", "discord-bot"),
+        KeyValue::new("service.name", "kobi-kendo-discord-bot"),
         KeyValue::new("service.environment", config.environment.clone()),
     ]);
 
-    // Build the tracer provider
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(exporter.build()?, opentelemetry_sdk::runtime::Tokio)
+    let logs_endpoint = if otlp_endpoint.contains("posthog.com") {
+        if otlp_endpoint.contains("eu.posthog.com") {
+            "https://eu.i.posthog.com/i/v1/logs"
+        } else if otlp_endpoint.contains("us.posthog.com") {
+            "https://us.i.posthog.com/i/v1/logs"
+        } else {
+            otlp_endpoint.as_str()
+        }
+    } else {
+        otlp_endpoint.as_str()
+    };
+
+    eprintln!("PostHog logs endpoint: {}", logs_endpoint);
+
+    let mut log_exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_http()
+        .with_endpoint(logs_endpoint);
+
+    if let Some(headers) = config.parse_otlp_headers() {
+        let mut http_headers = std::collections::HashMap::new();
+        for (key, value) in headers {
+            eprintln!("Adding OTLP log header: {} = {}", key, if key == "Authorization" { "***" } else { &value });
+            http_headers.insert(key, value);
+        }
+        log_exporter = log_exporter.with_headers(http_headers);
+    }
+
+    let logger_provider = LoggerProvider::builder()
         .with_resource(resource)
+        .with_batch_exporter(log_exporter.build()?, opentelemetry_sdk::runtime::Tokio)
         .build();
 
-    // Create the OpenTelemetry tracing layer
-    let tracer = tracer_provider.tracer("kendo-bot");
-    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let otel_log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
 
-    // Initialize the subscriber with environment filter, console, and OpenTelemetry layers
     tracing_subscriber::registry()
         .with(env_filter)
         .with(tracing_subscriber::fmt::layer())
-        .with(otel_layer)
+        .with(otel_log_layer)
         .init();
 
-    info!("Logging initialized with OpenTelemetry OTLP integration");
-    Ok(())
+    eprintln!("✅ Logging initialized with OpenTelemetry OTLP integration");
+    eprintln!("   - Logs: {} (HTTP)", logs_endpoint);
+    eprintln!("   ℹ️  Note: PostHog currently only supports logs, not traces");
+
+    Ok(logger_provider)
 }
 
-/// Initialize console-only logging
 fn init_console_only(env_filter: EnvFilter) -> Result<()> {
     tracing_subscriber::registry()
         .with(env_filter)
